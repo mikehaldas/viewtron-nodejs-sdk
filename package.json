@@ -1,0 +1,47 @@
+{
+  "name": "viewtron",
+  "version": "1.0.0",
+  "description": "Node.js SDK for Viewtron AI cameras and NVRs — receive and parse LPR, face, intrusion, and counting events via HTTP Post",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "example": "node examples/server.js"
+  },
+  "files": [
+    "src/",
+    "examples/",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "viewtron",
+    "ip-camera",
+    "lpr",
+    "anpr",
+    "license-plate",
+    "ai-camera",
+    "nvr",
+    "cctv",
+    "security-camera",
+    "node-red",
+    "home-assistant",
+    "home-automation",
+    "iot"
+  ],
+  "author": "Mike Haldas <mike@cctvcamerapros.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikehaldas/viewtron-nodejs-sdk.git"
+  },
+  "homepage": "https://videos.cctvcamerapros.com/developer/",
+  "bugs": {
+    "url": "https://github.com/mikehaldas/viewtron-nodejs-sdk/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.1.0"
+  }
+}
