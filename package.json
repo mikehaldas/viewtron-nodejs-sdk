@@ -1,5 +1,5 @@
 {
-  "name": "viewtron",
+  "name": "viewtron-sdk",
   "version": "1.0.0",
   "description": "Node.js SDK for Viewtron AI cameras and NVRs — receive and parse LPR, face, intrusion, and counting events via HTTP Post",
   "main": "src/index.js",

@@ -5,7 +5,7 @@ Node.js SDK for Viewtron AI cameras and NVRs. Receive and parse license plate re
 ## Installation
 
 ```bash
-npm install viewtron
+npm install viewtron-sdk
 ```
 
 ## Quick Start
@@ -15,7 +15,7 @@ npm install viewtron
 Receive events from cameras with a built-in HTTP server that handles all camera connection requirements (HTTP/1.1 persistent connections, keepalive timeouts, XML responses).
 
 ```javascript
-const { ViewtronServer } = require('viewtron');
+const { ViewtronServer } = require('viewtron-sdk');
 
 const server = new ViewtronServer({ port: 5050 });
 
@@ -46,7 +46,7 @@ server.start();
 Parse XML from any HTTP POST body without using the built-in server.
 
 ```javascript
-const { ViewtronEvent } = require('viewtron');
+const { ViewtronEvent } = require('viewtron-sdk');
 
 const event = ViewtronEvent(xmlString);
 if (event) {
