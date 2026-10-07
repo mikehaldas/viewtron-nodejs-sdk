@@ -3,7 +3,7 @@
 const http = require('http');
 const os = require('os');
 const { EventEmitter } = require('events');
-const { ViewtronEvent } = require('./events');
+const { inspectPost } = require('./events');
 
 // XML success response — cameras expect this to confirm the connection is alive.
 // Without it, cameras will disconnect and retry.
@@ -29,11 +29,16 @@ const DEFAULT_MAX_BODY_SIZE = 5 * 1024 * 1024;
  * - Connected camera tracking
  *
  * Events:
- *   'event'     (event, clientIP) — Parsed ViewtronEvent
- *   'connect'   (clientIP)        — First message from a new camera IP
- *   'raw'       (xml, clientIP)   — Raw XML before parsing (excludes traject)
- *   'listening' ({ port, ip })    — Server started
- *   'error'     (err)             — Server error
+ *   'event'     (event, clientIP)              — Parsed ViewtronEvent
+ *   'connect'   (clientIP)                     — First message from a new camera IP
+ *   'raw'       (xml, clientIP)                — Raw XML before parsing (excludes traject)
+ *   'unparsed'  (xml, clientIp, reason)        — Post did not become an event
+ *   'listening' ({ port, ip })                 — Server started
+ *   'error'     (err)                          — Server error
+ *
+ * `unparsed` reasons: `unknown-smartType`, `no-messageType`, `parse-error`,
+ * `alarmStatus`. Keepalives, traject, and non-XML bodies do not emit it.
+ * `raw` is unchanged: alarm status, traject, and keepalives still skip it.
  *
  * @example
  * const server = new ViewtronServer({ port: 5050 });
@@ -50,6 +55,7 @@ class ViewtronServer extends EventEmitter {
    * @param {Function} [options.onEvent] - Shorthand for server.on('event', fn)
    * @param {Function} [options.onConnect] - Shorthand for server.on('connect', fn)
    * @param {Function} [options.onRaw] - Shorthand for server.on('raw', fn)
+   * @param {Function} [options.onUnparsed] - Shorthand for server.on('unparsed', fn)
    */
   constructor(options = {}) {
     super();
@@ -62,6 +68,7 @@ class ViewtronServer extends EventEmitter {
     if (options.onEvent) this.on('event', options.onEvent);
     if (options.onConnect) this.on('connect', options.onConnect);
     if (options.onRaw) this.on('raw', options.onRaw);
+    if (options.onUnparsed) this.on('unparsed', options.onUnparsed);
   }
 
   /**
@@ -160,6 +167,11 @@ class ViewtronServer extends EventEmitter {
           this.connectedCameras.set(clientIP, new Date());
           this.emit('connect', clientIP);
         }
+        // Alarm status often has device info and no smartType, so it matches
+        // this keepalive check. It still does not emit raw or event.
+        if (body && body.includes('alarmStatusInfo')) {
+          this.emit('unparsed', body, clientIP, 'alarmStatus');
+        }
         return;
       }
 
@@ -169,16 +181,23 @@ class ViewtronServer extends EventEmitter {
       // Skip traject (high-volume continuous tracking data)
       if (body.includes('<traject type="list"')) return;
 
-      // Skip alarmStatus (alarm on/off with no detection data)
-      if (body.includes('alarmStatusInfo')) return;
+      // Skip alarmStatus (alarm on/off with no detection data).
+      // Still not emitted as raw. Callers can listen on 'unparsed'.
+      if (body.includes('alarmStatusInfo')) {
+        this.emit('unparsed', body, clientIP, 'alarmStatus');
+        return;
+      }
 
       // Emit raw XML before parsing
       this.emit('raw', body, clientIP);
 
       // Parse event
       try {
-        const event = ViewtronEvent(body);
-        if (!event) return;
+        const { event, reason } = inspectPost(body);
+        if (!event) {
+          if (reason) this.emit('unparsed', body, clientIP, reason);
+          return;
+        }
 
         // Set camera IP from socket if not in the event payload
         if (!event.cameraIp) event.cameraIp = clientIP;

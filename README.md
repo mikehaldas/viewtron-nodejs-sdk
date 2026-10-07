@@ -25,6 +25,7 @@ server.on('connect', (clientIP) => {
 
 server.on('event', (event, clientIP) => {
   console.log(`${event.category} from ${clientIP}`);
+  console.log(`${event.format} ${event.configVersion}`);
 
   if (event.category === 'lpr') {
     console.log(`Plate: ${event.plateNumber}`);
@@ -36,6 +37,10 @@ server.on('event', (event, clientIP) => {
     const fs = require('fs');
     fs.writeFileSync('plate.jpg', event.targetImageBytes);
   }
+});
+
+server.on('unparsed', (xml, clientIp, reason) => {
+  console.log(`Unparsed post from ${clientIp}: ${reason}`);
 });
 
 server.start();
@@ -50,9 +55,11 @@ const { ViewtronEvent } = require('viewtron-sdk');
 
 const event = ViewtronEvent(xmlString);
 if (event) {
-  console.log(event.category);    // 'lpr', 'face', 'intrusion', 'counting', 'metadata'
-  console.log(event.plateNumber); // 'ABC1234'
-  console.log(event.plateGroup);  // 'whiteList', 'blackList', or ''
+  console.log(event.category);       // 'lpr', 'face', 'intrusion', 'counting', 'metadata'
+  console.log(event.plateNumber);    // 'ABC1234'
+  console.log(event.plateGroup);     // 'whiteList', 'blackList', or ''
+  console.log(event.configVersion);  // '2.1.0'
+  console.log(event.format);         // 'v2'
 }
 ```
 
@@ -72,7 +79,9 @@ Every event has these common fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `source` | string | `'IPC'` (direct from camera) or `'NVR'` (via NVR) |
+| `source` | string | `'IPC'` or `'NVR'`. `'NVR'` currently means the post used a v2 envelope. Kept for compatibility. A later release may derive the device kind from `channelId`. |
+| `format` | string | `'v1'` or `'v2'`, from the major digit of the config version |
+| `configVersion` | string | Config version attribute, for example `'1.7'` or `'2.1.0'` |
 | `category` | string | `'lpr'`, `'face'`, `'intrusion'`, `'counting'`, `'metadata'`, `'traject'` |
 | `eventType` | string | Raw alarm type code (e.g., `'VEHICE'`, `'vehicle'`, `'PEA'`) |
 | `eventDescription` | string | Human-readable description |
@@ -126,7 +135,7 @@ Every event has these common fields:
 Parse an XML POST body from a Viewtron camera or NVR.
 
 - **postBody** `string` — Raw XML from camera HTTP POST
-- **Returns** `ViewtronEvent | null` — Parsed event, or `null` for keepalives, alarm status, and unrecognized payloads
+- **Returns** `ViewtronEvent | null` — Parsed event, or `null` for keepalives, alarm status, and unrecognized payloads. Parsed events include `configVersion` and `format`.
 
 ### `new ViewtronServer(options)`
 
@@ -141,6 +150,7 @@ HTTP server that receives camera events.
 | `onEvent` | function | — | Shorthand for `server.on('event', fn)` |
 | `onConnect` | function | — | Shorthand for `server.on('connect', fn)` |
 | `onRaw` | function | — | Shorthand for `server.on('raw', fn)` |
+| `onUnparsed` | function | — | Shorthand for `server.on('unparsed', fn)` |
 
 **Events:**
 
@@ -148,9 +158,21 @@ HTTP server that receives camera events.
 |-------|-----------|-------------|
 | `event` | `(event, clientIP)` | Parsed ViewtronEvent |
 | `connect` | `(clientIP)` | First message from a new camera IP |
-| `raw` | `(xml, clientIP)` | Raw XML before parsing |
+| `raw` | `(xml, clientIP)` | Raw XML before parsing. Omitted for keepalives, traject, and alarm status. |
+| `unparsed` | `(xml, clientIp, reason)` | Post did not become an event. See reasons below. |
 | `listening` | `({ port, ip })` | Server started |
 | `error` | `(err)` | Server error |
+
+**`unparsed` reasons:**
+
+| Reason | When |
+|--------|------|
+| `unknown-smartType` | `smartType` is missing or not accepted for that post |
+| `no-messageType` | A v2 post has no `messageType` and was not parsed as a v1 body |
+| `parse-error` | The XML could not be parsed |
+| `alarmStatus` | Alarm on/off notice with no detection payload |
+
+Keepalives, traject posts, and bodies that are not XML do not emit `unparsed`. An alarm-status post that has device info and no `smartType` counts as a connection and does not emit `raw`.
 
 **Methods:**
 
@@ -158,9 +180,16 @@ HTTP server that receives camera events.
 - `server.stop()` → `Promise<void>` — Graceful shutdown
 - `server.connectedCameras` → `Map<string, Date>` — Connected camera IPs and first-seen timestamps
 
+## Config version 2.x
+
+Any config version that starts with `2` is the v2 family, including `2.1.0` and later 2.x versions. A post laid out like a 2.0 event parses the same way.
+
+- A 2.x post with no `messageType` and a v1 `smartType` (for example `VEHICE` or `PEA`) is parsed with the v1 layout. `source` is `'IPC'` and `format` is `'v2'`.
+- `smartType` matching is case-insensitive inside each layout, and the category stays the one in that table. `VEHICLE` in a v2 envelope is a v2 plate event only when `licensePlateListInfo` is present. Without that list the post is `unparsed` with reason `unknown-smartType`. The canonical spelling `vehicle` is unchanged: it still requires `messageType` of `alarmData` and does not require the plate list.
+
 ## IPC vs NVR
 
-The SDK automatically detects and handles both formats:
+The SDK automatically detects and handles both formats. `source: 'NVR'` means the event was parsed from a v2 envelope:
 
 | Feature | IPC v1.x (Direct) | NVR v2.0 (Via NVR) |
 |---------|-------------------|-------------------|

@@ -457,3 +457,287 @@ describe('ViewtronServer', () => {
     await server.stop();
   });
 });
+
+// ==================== API 2.x ====================
+
+function withConfigVersion(xml, version) {
+  return xml.replace(/(<config\b[^>]*\bversion=")[^"]*(")/g, `$1${version}$2`);
+}
+
+function comparable(event) {
+  if (event == null) return null;
+  const copy = { ...event };
+  delete copy.xml;
+  delete copy.configVersion;
+  return copy;
+}
+
+function listFixtures(dir) {
+  return fs.readdirSync(path.join(__dirname, 'fixtures', dir))
+    .filter((name) => name.endsWith('.xml'))
+    .sort()
+    .map((name) => `${dir}/${name}`);
+}
+
+describe('Config version metadata', () => {
+  it('parses every v2 fixture the same at 2.0.0, 2.1.0, and 2.9.0', () => {
+    for (const name of listFixtures('nvr-v2')) {
+      const xml = fixture(name);
+      const original = ViewtronEvent(xml);
+      if (original) {
+        assert.strictEqual(original.format, 'v2', name);
+        assert.strictEqual(original.configVersion, '2.0.0', name);
+      }
+      for (const version of ['2.1.0', '2.9.0']) {
+        const parsed = ViewtronEvent(withConfigVersion(xml, version));
+        assert.deepStrictEqual(comparable(parsed), comparable(original), `${name} @ ${version}`);
+        if (parsed) {
+          assert.strictEqual(parsed.configVersion, version, name);
+          assert.strictEqual(parsed.format, 'v2', name);
+        }
+      }
+    }
+  });
+
+  it('parses every v1 fixture the same at 1.0 and 1.7', () => {
+    for (const name of listFixtures('ipc-v1x')) {
+      const xml = fixture(name);
+      const original = ViewtronEvent(xml);
+      if (original) {
+        assert.strictEqual(original.format, 'v1', name);
+        assert.ok(original.configVersion, name);
+      }
+      for (const version of ['1.0', '1.7']) {
+        const parsed = ViewtronEvent(withConfigVersion(xml, version));
+        assert.deepStrictEqual(comparable(parsed), comparable(original), `${name} @ ${version}`);
+        if (parsed) {
+          assert.strictEqual(parsed.configVersion, version, name);
+          assert.strictEqual(parsed.format, 'v1', name);
+        }
+      }
+    }
+  });
+
+  it('adds format and configVersion on a traject event', () => {
+    const xml = `<?xml version="1.0"?>
+      <config version="2.1.0" xmlns="http://www.ipc.com/ver10">
+        <currentTime>1732045234584193</currentTime>
+        <deviceInfo><channelId>3</channelId></deviceInfo>
+        <traject type="list" count="1">
+          <item>
+            <targetId>1</targetId>
+            <targetType>person</targetType>
+            <rect><x1>1</x1><y1>2</y1><x2>3</x2><y2>4</y2></rect>
+          </item>
+        </traject>
+      </config>`;
+    const event = ViewtronEvent(xml);
+    assert.ok(event);
+    assert.strictEqual(event.source, 'NVR-ch3');
+    assert.strictEqual(event.format, 'v2');
+    assert.strictEqual(event.configVersion, '2.1.0');
+  });
+});
+
+describe('API 2.x routing', () => {
+  it('parses an IPC-style body at 2.1.0 with no messageType as a v1 event', () => {
+    const baseline = ViewtronEvent(fixture('ipc-v1x/lpr.xml'));
+    const xml = withConfigVersion(fixture('ipc-v1x/lpr.xml'), '2.1.0');
+    const event = ViewtronEvent(xml);
+    assert.ok(event);
+    assert.strictEqual(event.source, 'IPC');
+    assert.strictEqual(event.category, 'lpr');
+    assert.strictEqual(event.eventType, 'VEHICE');
+    assert.strictEqual(event.plateNumber, 'ABC1234');
+    assert.strictEqual(event.plateGroup, 'whiteList');
+    assert.strictEqual(event.format, 'v2');
+    assert.strictEqual(event.configVersion, '2.1.0');
+
+    const left = comparable(event);
+    const right = comparable(baseline);
+    delete left.format;
+    delete right.format;
+    assert.deepStrictEqual(left, right);
+  });
+
+  it('parses uppercase VEHICLE in a v2 envelope when the v2 plate list is present', () => {
+    const original = ViewtronEvent(fixture('nvr-v2/vehicle-lpr.xml'));
+    const xml = withConfigVersion(fixture('nvr-v2/vehicle-lpr.xml'), '2.1.0')
+      .replace('<smartType>vehicle</smartType>', '<smartType>VEHICLE</smartType>');
+    const event = ViewtronEvent(xml);
+    assert.ok(event);
+    assert.strictEqual(event.source, 'NVR');
+    assert.strictEqual(event.category, 'lpr');
+    assert.strictEqual(event.eventType, 'VEHICLE');
+    assert.strictEqual(event.eventDescription, 'License Plate Detection');
+    assert.strictEqual(event.plateNumber, original.plateNumber);
+    assert.strictEqual(event.plateColor, original.plateColor);
+    assert.deepStrictEqual(event.vehicle, original.vehicle);
+    assert.strictEqual(event.format, 'v2');
+    assert.strictEqual(event.configVersion, '2.1.0');
+  });
+
+  it('matches other v2 smartType values without changing the category', () => {
+    const original = ViewtronEvent(fixture('nvr-v2/region-intrusion.xml'));
+    const xml = fixture('nvr-v2/region-intrusion.xml')
+      .replace('<smartType>regionIntrusion</smartType>', '<smartType>RegionIntrusion</smartType>');
+    const event = ViewtronEvent(xml);
+    assert.ok(event);
+    assert.strictEqual(event.category, original.category);
+    assert.strictEqual(event.eventType, 'RegionIntrusion');
+    assert.strictEqual(event.eventId, original.eventId);
+    assert.strictEqual(event.targetType, original.targetType);
+    assert.strictEqual(event.format, 'v2');
+    assert.strictEqual(event.configVersion, '2.0.0');
+  });
+
+  it('still parses canonical vehicle alarmData when the plate list is absent', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      <config version="2.0.0" xmlns="http://www.ipc.com/ver10">
+        <messageType>alarmData</messageType>
+        <deviceInfo>
+          <deviceName><![CDATA[Front Gate]]></deviceName>
+          <ip><![CDATA[203.0.113.10]]></ip>
+          <mac><![CDATA[00:11:22:33:44:55]]></mac>
+          <channelId>1</channelId>
+        </deviceInfo>
+        <smartType>vehicle</smartType>
+        <currentTime>1700000000000000</currentTime>
+      </config>`;
+    const event = ViewtronEvent(xml);
+    assert.ok(event);
+    assert.strictEqual(event.source, 'NVR');
+    assert.strictEqual(event.category, 'lpr');
+    assert.strictEqual(event.eventType, 'vehicle');
+    assert.strictEqual(event.plateNumber, '');
+    assert.strictEqual(event.format, 'v2');
+    assert.strictEqual(event.configVersion, '2.0.0');
+  });
+});
+
+describe('Unparsed posts', () => {
+  const { ViewtronServer } = require('../src');
+
+  function nvrPost({ version = '2.1.0', messageType, smartType, extra = '' }) {
+    const message = messageType == null ? '' : `<messageType>${messageType}</messageType>`;
+    return `<?xml version="1.0" encoding="UTF-8"?>
+      <config version="${version}" xmlns="http://www.ipc.com/ver10">
+        ${message}
+        <deviceInfo>
+          <deviceName><![CDATA[Front Gate]]></deviceName>
+          <ip><![CDATA[203.0.113.10]]></ip>
+          <mac><![CDATA[00:11:22:33:44:55]]></mac>
+          <channelId>1</channelId>
+        </deviceInfo>
+        <smartType>${smartType}</smartType>
+        <currentTime>1700000000000000</currentTime>
+        ${extra}
+      </config>`;
+  }
+
+  async function listen(xml) {
+    const events = [];
+    const raw = [];
+    const unparsed = [];
+    const connections = [];
+    const server = new ViewtronServer({
+      port: 0,
+      onEvent: (event, clientIp) => events.push({ event, clientIp }),
+      onConnect: (clientIp) => connections.push(clientIp),
+      onRaw: (body, clientIp) => raw.push({ body, clientIp }),
+      onUnparsed: (body, clientIp, reason) => unparsed.push({ body, clientIp, reason }),
+    });
+    const { port } = await server.start();
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/xml' },
+        body: xml,
+      });
+      assert.strictEqual(response.status, 200);
+      await new Promise((r) => setTimeout(r, 50));
+      return { events, raw, unparsed, connections };
+    } finally {
+      await server.stop();
+    }
+  }
+
+  it('does not emit unparsed for an IPC-style 2.1.0 body with no messageType', async () => {
+    const xml = withConfigVersion(fixture('ipc-v1x/lpr.xml'), '2.1.0');
+    assert.strictEqual(ViewtronEvent(xml).category, 'lpr');
+    const { events, raw, unparsed } = await listen(xml);
+    assert.strictEqual(unparsed.length, 0);
+    assert.strictEqual(raw.length, 1);
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].event.plateNumber, 'ABC1234');
+    assert.strictEqual(events[0].event.source, 'IPC');
+    assert.strictEqual(events[0].event.format, 'v2');
+    assert.strictEqual(events[0].event.configVersion, '2.1.0');
+    assert.ok(events[0].clientIp);
+  });
+
+  it('emits unknown-smartType for uppercase VEHICLE with no licensePlateListInfo', async () => {
+    const xml = nvrPost({ messageType: 'alarmData', smartType: 'VEHICLE' });
+    assert.strictEqual(ViewtronEvent(xml), null);
+    const { events, raw, unparsed } = await listen(xml);
+    assert.strictEqual(events.length, 0);
+    assert.strictEqual(raw.length, 1);
+    assert.strictEqual(unparsed.length, 1);
+    assert.strictEqual(unparsed[0].reason, 'unknown-smartType');
+    assert.strictEqual(unparsed[0].body, xml);
+    assert.ok(unparsed[0].clientIp);
+    assert.strictEqual(unparsed[0].clientIp, raw[0].clientIp);
+  });
+
+  it('emits no-messageType for an NVR-style body with an unknown smartType', async () => {
+    const xml = nvrPost({ smartType: 'MOTION' });
+    assert.strictEqual(ViewtronEvent(xml), null);
+    const { events, raw, unparsed } = await listen(xml);
+    assert.strictEqual(events.length, 0);
+    assert.strictEqual(raw.length, 1);
+    assert.strictEqual(unparsed.length, 1);
+    assert.strictEqual(unparsed[0].reason, 'no-messageType');
+    assert.strictEqual(unparsed[0].body, xml);
+    assert.ok(unparsed[0].clientIp);
+  });
+
+  it('emits parse-error for XML that cannot be read', async () => {
+    const xml = '<?xml version="1.0"?><broken';
+    assert.strictEqual(ViewtronEvent(xml), null);
+    const { events, raw, unparsed } = await listen(xml);
+    assert.strictEqual(events.length, 0);
+    assert.strictEqual(raw.length, 1);
+    assert.strictEqual(unparsed.length, 1);
+    assert.strictEqual(unparsed[0].reason, 'parse-error');
+  });
+
+  it('emits alarmStatus and still does not emit raw', async () => {
+    const xml = fixture('nvr-v2/alarm-status.xml');
+    assert.strictEqual(ViewtronEvent(xml), null);
+    const { events, raw, unparsed, connections } = await listen(xml);
+    assert.strictEqual(events.length, 0);
+    assert.strictEqual(raw.length, 0);
+    assert.strictEqual(unparsed.length, 1);
+    assert.strictEqual(unparsed[0].reason, 'alarmStatus');
+    assert.strictEqual(unparsed[0].body, xml);
+    // deviceInfo with no smartType still counts as a connection
+    assert.strictEqual(connections.length, 1);
+  });
+
+  it('does not emit unparsed for a keepalive', async () => {
+    const xml = withConfigVersion(fixture('nvr-v2/keepalive.xml'), '2.1.0');
+    assert.strictEqual(ViewtronEvent(xml), null);
+    const { events, raw, unparsed } = await listen(xml);
+    assert.strictEqual(events.length, 0);
+    assert.strictEqual(raw.length, 0);
+    assert.strictEqual(unparsed.length, 0);
+  });
+
+  it('emits unknown-smartType for alarmData with an unrecognized smartType', async () => {
+    const xml = nvrPost({ messageType: 'alarmData', smartType: 'NOT_A_TYPE' });
+    const { events, unparsed } = await listen(xml);
+    assert.strictEqual(events.length, 0);
+    assert.strictEqual(unparsed.length, 1);
+    assert.strictEqual(unparsed[0].reason, 'unknown-smartType');
+  });
+});

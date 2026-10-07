@@ -35,10 +35,18 @@ server.on('connect', (clientIP) => {
   console.log(`\n[+] Camera connected: ${clientIP}`);
 });
 
+server.on('unparsed', (xml, clientIp, reason) => {
+  const time = new Date().toLocaleTimeString();
+  console.log(`\n[${time}] Unparsed post from ${clientIp} (${reason})`);
+});
+
 server.on('event', (event, clientIP) => {
   const time = new Date().toLocaleTimeString();
   console.log(`\n[${time}] ${event.category.toUpperCase()} from ${clientIP}`);
   console.log(`  Source: ${event.source} | Type: ${event.eventDescription}`);
+  if (event.format || event.configVersion) {
+    console.log(`  Format: ${event.format} | Config: ${event.configVersion}`);
+  }
 
   switch (event.category) {
     case 'lpr':
