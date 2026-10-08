@@ -236,6 +236,31 @@ node examples/server.js 5050
 - [Node-RED Integration](https://github.com/mikehaldas/node-red-contrib-viewtron)
 - [Home Assistant Integration](https://github.com/mikehaldas/viewtron-home-assistant)
 
+## Releasing
+
+Ship a version from a pull request, then a GitHub release. Publishing runs from that release.
+
+1. Open a pull request that sets `version` in `package.json` and adds a matching entry to `CHANGELOG.md`.
+2. Merge that pull request to `main`.
+3. Publish a GitHub release tagged `vX.Y.Z`, where `X.Y.Z` is the `package.json` version. Point the tag at the merge commit on `main`.
+
+`.github/workflows/publish.yml` runs when the release is published. It checks out that tag, runs `npm ci` and `npm test`, and publishes when the tag is `vX.Y.Z` and `package.json` is `X.Y.Z`. npm attaches a provenance attestation for this public package. To publish an existing tag by hand, open **Actions**, choose **Publish to npm**, and enter the tag (for example `v1.2.3`).
+
+### Trusted publisher on npmjs.com
+
+A package owner configures this once, on the `viewtron-sdk` package, before the first automated publish:
+
+1. Open the package on npmjs.com and go to **Settings → Trusted publisher**.
+2. Select **GitHub Actions** and enter:
+   - **Organization or user:** `mikehaldas`
+   - **Repository:** `viewtron-nodejs-sdk`
+   - **Workflow filename:** `publish.yml`
+   - **Environment name:** leave this empty
+3. Allow direct publishing with `npm publish`. A new trusted publisher allows `npm stage publish` until that option is selected as well.
+4. Save the publisher.
+
+Use the publisher for a successful publish within 2 days of creating it. After that window an unused publisher expires and has to be created again, so create it when the next release is ready.
+
 ## License
 
 MIT
