@@ -51,12 +51,16 @@ server.on('event', (event, clientIP) => {
   switch (event.category) {
     case 'lpr':
       console.log(`  Plate: ${event.plateNumber}`);
-      console.log(`  Group: ${event.plateGroup || '(not in database)'}`);
+      if (event.plateList) console.log(`  List: ${event.plateList}`);
+      else console.log(`  Group: ${event.plateGroup || '(not in database)'}`);
+      if (event.direction) console.log(`  Direction: ${event.direction}`);
+      if (event.confidence != null) console.log(`  Confidence: ${event.confidence}`);
+      if (event.eventTime) console.log(`  Time: ${event.eventTime.toISOString()}`);
       if (event.plateColor) console.log(`  Plate Color: ${event.plateColor}`);
-      if (event.vehicle) {
-        const v = event.vehicle;
-        const parts = [v.color, v.brand, v.model, v.type].filter(Boolean);
-        console.log(`  Vehicle: ${parts.join(' ')}`);
+      {
+        const parts = [event.vehicleColor, event.vehicleBrand, event.vehicleModel, event.vehicleType]
+          .filter(Boolean);
+        if (parts.length) console.log(`  Vehicle: ${parts.join(' ')}`);
       }
       if (event.carOwner) console.log(`  Owner: ${event.carOwner}`);
       break;

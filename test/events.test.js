@@ -23,12 +23,15 @@ describe('IPC v1.x', () => {
       assert.strictEqual(event.eventDescription, 'License Plate Detection');
       assert.strictEqual(event.plateNumber, 'ABC1234');
       assert.strictEqual(event.plateGroup, 'whiteList');
+      assert.strictEqual(event.plateList, 'whiteList');
     });
 
     it('should have timestamp', () => {
       const event = ViewtronEvent(fixture('ipc-v1x/lpr.xml'));
       assert.ok(event.timestamp);
       assert.strictEqual(event.timestamp, '1732045234584193');
+      assert.ok(event.eventTime instanceof Date);
+      assert.strictEqual(event.eventTime.toISOString(), '2024-11-19T19:40:34.584Z');
     });
   });
 
@@ -739,5 +742,144 @@ describe('Unparsed posts', () => {
     assert.strictEqual(events.length, 0);
     assert.strictEqual(unparsed.length, 1);
     assert.strictEqual(unparsed[0].reason, 'unknown-smartType');
+  });
+});
+
+// ==================== Direct camera plate posts ====================
+
+describe('Direct camera plate posts', () => {
+  const { ViewtronServer } = require('../src');
+
+  function lprWith(time, extra = '') {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+      <config version="1.7" xmlns="http://www.ipc.com/ver10">
+        <smartType type="openAlarmObj">VEHICE</smartType>
+        <currentTime type="tint64">${time}</currentTime>
+        <listInfo type="list" count="1">
+          <item>
+            <plateNumber type="string"><![CDATA[TEST1]]></plateNumber>
+            <vehicleListType type="vehileMatchAlarmList">strangerList</vehicleListType>
+            <vehicleDirect type="vehicleDirectType">approach</vehicleDirect>
+            ${extra}
+          </item>
+        </listInfo>
+      </config>`;
+  }
+
+  async function post(xml) {
+    const events = [];
+    const raw = [];
+    const unparsed = [];
+    const server = new ViewtronServer({ port: 0 });
+    server.on('event', (event) => events.push(event));
+    server.on('raw', (body) => raw.push(body));
+    server.on('unparsed', (body, clientIp, reason) => unparsed.push({ body, clientIp, reason }));
+    const { port } = await server.start();
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/xml' },
+        body: xml,
+      });
+      assert.strictEqual(response.status, 200);
+      await new Promise((r) => setTimeout(r, 50));
+      return { events, raw, unparsed };
+    } finally {
+      await server.stop();
+    }
+  }
+
+  it('parses a plate post as an LPR event', async () => {
+    const xml = fixture('ipc-v2.1/lpr.xml');
+    const event = ViewtronEvent(xml);
+    assert.ok(event);
+    assert.strictEqual(event.source, 'IPC');
+    assert.strictEqual(event.format, 'v1');
+    assert.strictEqual(event.configVersion, '1.7');
+    assert.strictEqual(event.category, 'lpr');
+    assert.strictEqual(event.eventType, 'VEHICE');
+    assert.strictEqual(event.plateNumber, 'AIDRIVE');
+    assert.strictEqual(event.plateGroup, 'blackList');
+    assert.strictEqual(event.plateList, 'blackList');
+    assert.strictEqual(event.direction, 'away');
+    assert.strictEqual(event.confidence, 99);
+    assert.strictEqual(event.vehicleColor, 'grey');
+    assert.strictEqual(event.vehicleBrand, 'Tesla');
+    assert.strictEqual(event.vehicleType, 'saloon car');
+    assert.strictEqual(event.vehicleModel, 'Tesla_ModelS');
+    assert.deepStrictEqual(event.vehicle, {
+      type: 'saloon car',
+      color: 'grey',
+      brand: 'Tesla',
+      model: 'Tesla_ModelS',
+    });
+    assert.strictEqual(event.cameraName, 'Viewtron IPC');
+    assert.strictEqual(event.cameraMac, '00:00:00:00:00:00');
+    assert.strictEqual(event.channelId, '1');
+    assert.strictEqual(event.timestamp, '1791408287427999');
+    assert.strictEqual(event.eventTime.toISOString(), '2026-10-07T21:24:47.427Z');
+    assert.strictEqual(event.hasImages, false);
+
+    const { events, unparsed } = await post(xml);
+    assert.strictEqual(unparsed.length, 0);
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].category, 'lpr');
+    assert.strictEqual(events[0].plateNumber, 'AIDRIVE');
+    assert.strictEqual(events[0].plateList, 'blackList');
+  });
+
+  it('ignores a keepalive', async () => {
+    const xml = fixture('ipc-v2.1/keepalive.xml');
+    assert.strictEqual(ViewtronEvent(xml), null);
+    const { events, raw, unparsed } = await post(xml);
+    assert.strictEqual(events.length, 0);
+    assert.strictEqual(raw.length, 0);
+    assert.strictEqual(unparsed.length, 0);
+  });
+
+  for (const name of ['alarm-status-on.xml', 'alarm-status-off.xml']) {
+    it(`emits unparsed alarmStatus for ${name}`, async () => {
+      const xml = fixture(`ipc-v2.1/${name}`);
+      assert.strictEqual(ViewtronEvent(xml), null);
+      const { events, raw, unparsed } = await post(xml);
+      assert.strictEqual(events.length, 0);
+      assert.strictEqual(raw.length, 0);
+      assert.strictEqual(unparsed.length, 1);
+      assert.strictEqual(unparsed[0].reason, 'alarmStatus');
+      assert.strictEqual(unparsed[0].body, xml);
+    });
+  }
+
+  it('reads seconds, milliseconds, and microseconds by magnitude', () => {
+    const seconds = ViewtronEvent(lprWith('1700000000'));
+    const millis = ViewtronEvent(lprWith('1700000000000'));
+    const micros = ViewtronEvent(lprWith('1700000000000000'));
+    const expected = '2023-11-14T22:13:20.000Z';
+    assert.strictEqual(seconds.timestamp, '1700000000');
+    assert.strictEqual(seconds.eventTime.toISOString(), expected);
+    assert.strictEqual(millis.timestamp, '1700000000000');
+    assert.strictEqual(millis.eventTime.toISOString(), expected);
+    assert.strictEqual(micros.timestamp, '1700000000000000');
+    assert.strictEqual(micros.eventTime.toISOString(), expected);
+  });
+
+  it('maps approach, strangerList, and a confidence of zero', () => {
+    const xml = lprWith('1700000000000000', '<PlateConfidence type="uint32" count="0"/>');
+    const event = ViewtronEvent(xml);
+    assert.strictEqual(event.direction, 'approach');
+    assert.strictEqual(event.plateList, 'strangerList');
+    assert.strictEqual(event.confidence, 0);
+  });
+
+  it('copies v2 plate attributes onto the same LPR fields', () => {
+    const event = ViewtronEvent(fixture('nvr-v2/vehicle-lpr.xml'));
+    assert.strictEqual(event.vehicleType, event.vehicle.type);
+    assert.strictEqual(event.vehicleColor, event.vehicle.color);
+    assert.strictEqual(event.vehicleBrand, event.vehicle.brand);
+    assert.strictEqual(event.vehicleModel, event.vehicle.model);
+    assert.strictEqual(event.plateList, null);
+    assert.strictEqual(event.direction, null);
+    assert.strictEqual(event.confidence, null);
+    assert.ok(event.eventTime instanceof Date);
   });
 });

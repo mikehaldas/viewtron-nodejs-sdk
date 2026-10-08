@@ -18,7 +18,9 @@ alarm status messages, and unrecognized payloads. Parsed events include
 <code>configVersion</code> (the config version attribute) and <code>format</code> (<code>v1</code> or <code>v2</code>).</p>
 <p>A config version of 2.x selects the v2 envelope. A 2.x post with no
 <code>messageType</code> and a v1 <code>smartType</code> is parsed with the v1 layout instead.
-Within each layout, <code>smartType</code> matching is case-insensitive.</p>
+Within each layout, <code>smartType</code> matching is case-insensitive.
+<code>eventTime</code> is the camera time. <code>currentTime</code> is read as seconds,
+milliseconds, or microseconds based on its magnitude.</p>
 </dd>
 </dl>
 
@@ -53,6 +55,8 @@ alarm status messages, and unrecognized payloads. Parsed events include
 A config version of 2.x selects the v2 envelope. A 2.x post with no
 `messageType` and a v1 `smartType` is parsed with the v1 layout instead.
 Within each layout, `smartType` matching is case-insensitive.
+`eventTime` is the camera time. `currentTime` is read as seconds,
+milliseconds, or microseconds based on its magnitude.
 
 **Kind**: global function  
 

@@ -76,6 +76,9 @@ const ALARM_DESCRIPTIONS = {
 // IPC v1.x uses numeric target type IDs
 const TARGET_TYPES = { 1: 'person', 2: 'car', 4: 'motorcycle' };
 
+// Plate database list names carried on a direct camera post.
+const PLATE_LISTS = new Set(['whiteList', 'blackList', 'temporaryList', 'strangerList']);
+
 // ==================== Helpers ====================
 
 /**
@@ -101,6 +104,65 @@ function extractBase64(val) {
   const text = getText(val);
   if (!text || text.startsWith('BASE64')) return '';
   return text;
+}
+
+function getAttr(val, name) {
+  if (val == null || typeof val !== 'object') return '';
+  const attr = val['@_' + name];
+  if (attr == null) return '';
+  return String(attr).trim();
+}
+
+// currentTime is seconds, milliseconds, or microseconds. The magnitude picks the unit.
+function eventTimeFromRaw(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  const n = Number(text);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  let ms;
+  if (n >= 1e14) ms = n / 1000;
+  else if (n >= 1e11) ms = n;
+  else ms = n * 1000;
+  const date = new Date(ms);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function setTimestamp(event, raw) {
+  event.timestamp = getText(raw);
+  event.eventTime = eventTimeFromRaw(event.timestamp);
+}
+
+function applyPlateList(event) {
+  event.plateList = PLATE_LISTS.has(event.plateGroup) ? event.plateGroup : null;
+}
+
+function applyVehicleFields(event, car) {
+  if (!car) return;
+  const type = getText(car.carType) || getText(car.type);
+  const color = getText(car.color);
+  const brand = getText(car.brand);
+  const model = getText(car.model);
+  if (!(type || color || brand || model)) return;
+  event.vehicleType = type;
+  event.vehicleColor = color;
+  event.vehicleBrand = brand;
+  event.vehicleModel = model;
+  event.vehicle = { type, color, brand, model };
+}
+
+function parseDirection(raw) {
+  const text = getText(raw).toLowerCase();
+  if (text === 'approach' || text === 'away') return text;
+  return null;
+}
+
+// PlateConfidence count is hundredths of a percent: 9900 = 99.00.
+function parseConfidence(node) {
+  const raw = getAttr(node, 'count');
+  if (raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n) / 100;
 }
 
 // Case-insensitive table lookup. The returned key keeps the table's spelling
@@ -142,14 +204,22 @@ class ViewtronEvent {
     this.channelId = '';
 
     // Timing
-    this.timestamp = '';
+    this.timestamp = '';         // raw currentTime text
+    this.eventTime = null;       // Date from currentTime (s / ms / µs by magnitude)
 
     // LPR fields
     this.plateNumber = '';
     this.plateColor = '';
-    this.plateGroup = '';        // IPC: 'whiteList'/'blackList'/'temporaryList', NVR: user-defined group name
+    this.plateGroup = '';        // IPC list name or NVR group name; '' if absent
+    this.plateList = null;       // whiteList/blackList/temporaryList/strangerList, or null
+    this.direction = null;       // 'approach', 'away', or null
+    this.confidence = null;      // 0–100, or null
     this.carOwner = '';
-    this.vehicle = null;         // { type, color, brand, model } — NVR only
+    this.vehicleColor = '';
+    this.vehicleBrand = '';
+    this.vehicleType = '';
+    this.vehicleModel = '';
+    this.vehicle = null;         // { type, color, brand, model } when the post includes them
 
     // Face fields
     this.face = null;            // { age, sex, glasses, mask } — NVR only
@@ -210,19 +280,28 @@ function parseIPC(config, xml) {
   event.category = IPC_CATEGORIES[canonical];
   event.eventType = alarmType;
   event.eventDescription = ALARM_DESCRIPTIONS[alarmType] || ALARM_DESCRIPTIONS[canonical] || alarmType;
-  event.timestamp = getText(config.currentTime);
-  event.cameraName = getText(config['deviceNo.']);
+  setTimestamp(event, config.currentTime);
+  event.cameraName = getText(config['deviceNo.']) || getText(config.deviceName);
+  event.cameraMac = getText(config.mac);
+  event.channelId = getText(config.channelId);
   event.xml = xml;
   applyConfigMeta(event, config);
 
-  // LPR — plate number and database group
+  // LPR — plate number, list, direction, confidence, and car attributes.
+  // The overview item often has an empty plateNumber; use the item that has text.
   if (event.category === 'lpr' && config.listInfo) {
     const items = asArray(config.listInfo.item);
+    let plateItem = null;
     for (const item of items) {
-      if (item && item.plateNumber) {
-        event.plateNumber = getText(item.plateNumber);
-        event.plateGroup = getText(item.vehicleListType);
-      }
+      if (item && getText(item.plateNumber)) plateItem = item;
+    }
+    if (plateItem) {
+      event.plateNumber = getText(plateItem.plateNumber);
+      event.plateGroup = getText(plateItem.vehicleListType);
+      applyPlateList(event);
+      event.direction = parseDirection(plateItem.vehicleDirect);
+      event.confidence = parseConfidence(plateItem.PlateConfidence);
+      applyVehicleFields(event, plateItem.carAttr);
     }
   }
 
@@ -314,7 +393,7 @@ function parseNVR(config, xml) {
   event.category = NVR_CATEGORIES[canonical];
   event.eventType = alarmType;
   event.eventDescription = ALARM_DESCRIPTIONS[alarmType] || ALARM_DESCRIPTIONS[canonical] || alarmType;
-  event.timestamp = getText(config.currentTime);
+  setTimestamp(event, config.currentTime);
 
   const deviceInfo = config.deviceInfo || {};
   event.cameraName = getText(deviceInfo.deviceName);
@@ -333,18 +412,11 @@ function parseNVR(config, xml) {
       event.plateNumber = getText(attr.licensePlateNumber);
       event.plateColor = getText(attr.color);
 
-      const car = plate.carAttribute || {};
-      if (getText(car.brand) || getText(car.carType)) {
-        event.vehicle = {
-          type: getText(car.carType),
-          color: getText(car.color),
-          brand: getText(car.brand),
-          model: getText(car.model),
-        };
-      }
+      applyVehicleFields(event, plate.carAttribute);
 
       const matchInfo = plate.licensePlateMatchInfo || {};
       event.plateGroup = getText(matchInfo.groupName);
+      applyPlateList(event);
       const owner = getText(matchInfo.carOwner);
       if (owner) event.carOwner = owner;
     }
@@ -438,7 +510,7 @@ function parseTraject(xml) {
   event.cameraIp = getText(deviceInfo.ip);
   event.cameraMac = getText(deviceInfo.mac);
   event.channelId = getText(deviceInfo.channelId);
-  event.timestamp = getText(config.currentTime);
+  setTimestamp(event, config.currentTime);
 
   // Determine source
   const version = getText(config['@_version']);
@@ -563,6 +635,8 @@ function inspectV2(config, postBody) {
  * A config version of 2.x selects the v2 envelope. A 2.x post with no
  * `messageType` and a v1 `smartType` is parsed with the v1 layout instead.
  * Within each layout, `smartType` matching is case-insensitive.
+ * `eventTime` is the camera time. `currentTime` is read as seconds,
+ * milliseconds, or microseconds based on its magnitude.
  *
  * @param {string} postBody - Raw XML string from camera HTTP POST
  * @returns {ViewtronEvent|null}

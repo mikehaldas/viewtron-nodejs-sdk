@@ -88,8 +88,9 @@ Every event has these common fields:
 | `cameraName` | string | Device name |
 | `cameraIp` | string | Camera IP address |
 | `cameraMac` | string | Camera MAC address |
-| `channelId` | string | NVR channel ID |
-| `timestamp` | string | Event timestamp |
+| `channelId` | string | Channel id when the post includes one |
+| `timestamp` | string | Raw `currentTime` text from the camera |
+| `eventTime` | Date\|null | Camera event time. Seconds, milliseconds, and microseconds are chosen by magnitude |
 | `xml` | string | Raw XML for debugging |
 
 ### LPR Fields
@@ -97,10 +98,30 @@ Every event has these common fields:
 | Field | Type | Description |
 |-------|------|-------------|
 | `plateNumber` | string | Detected plate text |
-| `plateGroup` | string | IPC: `'whiteList'`, `'blackList'`, `'temporaryList'`. NVR: user-defined group name. Empty if not in database. |
-| `plateColor` | string | Plate color (NVR only) |
-| `carOwner` | string | Owner name from NVR database |
-| `vehicle` | object\|null | `{ type, color, brand, model }` (NVR only) |
+| `plateGroup` | string | List or group name from the post. Empty when the plate is not in a named group. |
+| `plateList` | string\|null | `'whiteList'`, `'blackList'`, `'temporaryList'`, or `'strangerList'` when the post uses one of those names. `null` for any other group. |
+| `direction` | string\|null | `'approach'`, `'away'`, or `null` |
+| `confidence` | number\|null | `0`–`100`. `PlateConfidence` `count="9900"` is `99`. `null` when the post has no confidence. |
+| `vehicleColor` | string | Vehicle color, when the post includes it |
+| `vehicleBrand` | string | Vehicle brand |
+| `vehicleType` | string | Vehicle type |
+| `vehicleModel` | string | Vehicle model |
+| `plateColor` | string | Plate color (v2 envelope) |
+| `carOwner` | string | Owner name from an NVR database |
+| `vehicle` | object\|null | `{ type, color, brand, model }` when car attributes are present |
+
+Only approaching allow-list cars at 90% confidence or better:
+
+```javascript
+server.on('event', (event) => {
+  if (event.category !== 'lpr') return;
+  if (event.plateList !== 'whiteList') return;
+  if (event.direction !== 'approach') return;
+  if (event.confidence == null || event.confidence < 90) return;
+
+  console.log(event.plateNumber, event.vehicleColor, event.eventTime);
+});
+```
 
 ### Face Fields
 
@@ -185,6 +206,7 @@ Keepalives, traject posts, and bodies that are not XML do not emit `unparsed`. A
 Any config version that starts with `2` is the v2 family, including `2.1.0` and later 2.x versions. A post laid out like a 2.0 event parses the same way.
 
 - A 2.x post with no `messageType` and a v1 `smartType` (for example `VEHICE` or `PEA`) is parsed with the v1 layout. `source` is `'IPC'` and `format` is `'v2'`.
+- A direct camera can also post that same v1 plate layout with config version `1.7` (no `messageType`, `smartType` `VEHICE`). That post parses as an LPR event. `format` is `'v1'`.
 - `smartType` matching is case-insensitive inside each layout, and the category stays the one in that table. `VEHICLE` in a v2 envelope is a v2 plate event only when `licensePlateListInfo` is present. Without that list the post is `unparsed` with reason `unknown-smartType`. The canonical spelling `vehicle` is unchanged: it still requires `messageType` of `alarmData` and does not require the plate list.
 
 ## IPC vs NVR
@@ -194,10 +216,10 @@ The SDK automatically detects and handles both formats. `source: 'NVR'` means th
 | Feature | IPC v1.x (Direct) | NVR v2.0 (Via NVR) |
 |---------|-------------------|-------------------|
 | Face attributes | No | Yes (age, sex, glasses, mask) |
-| Vehicle attributes | No | Yes (type, color, brand, model) |
-| Plate group | `whiteList` / `blackList` / `temporaryList` | User-defined group name |
-| Channel ID | No | Yes |
-| Device info | Camera name only | Name, IP, MAC, channel |
+| Vehicle attributes | When the post includes `carAttr` | Yes (type, color, brand, model) |
+| Plate group | `whiteList` / `blackList` / `temporaryList` / `strangerList` | User-defined group name |
+| Channel ID | When the post includes it | Yes |
+| Device info | Name, MAC, and channel when present | Name, IP, MAC, channel |
 
 ## Example Server
 
