@@ -261,6 +261,15 @@ A package owner configures this once, on the `viewtron-sdk` package, before the 
 
 Use the publisher for a successful publish within 2 days of creating it. After that window an unused publisher expires and has to be created again, so create it when the next release is ready.
 
+### Product links (every release)
+
+- [ ] README and release notes link the tested Viewtron camera's product page once, with a descriptive anchor that includes the model (for example "Viewtron LPR-IP4 license plate recognition camera"). No "click here".
+- [ ] Release notes / CHANGELOG entry ends with 2-3 links: the product page, the matching developer docs page, and one related guide.
+- [ ] Every link is a published page and returns 200: `curl -sL -A 'Mozilla/5.0' -o /dev/null -w '%{http_code}' <url>`. No 404s, no redirect hops, no drafts or preview links.
+- [ ] No UTM tags and no rel attributes on links to cctvcamerapros.com or videos.cctvcamerapros.com.
+- [ ] Examples use only the plate IB36NL. Viewtron cameras ship set to DHCP; no example address is presented as a default. Only the Viewtron brand is named.
+- [ ] Release notes can be edited after publishing to add or fix links (no new version needed). README link fixes ship with the next package version, because npm shows the README from the published package.
+
 ## License
 
 MIT
