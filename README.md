@@ -2,6 +2,8 @@
 
 Node.js SDK for Viewtron AI cameras and NVRs. Receive and parse license plate recognition (LPR), face detection, intrusion, and counting events via HTTP Post.
 
+Version 1.1.0 parses API 2.1 posts from the [Viewtron LPR-IP4 LPR camera](https://www.cctvcamerapros.com/LPR-Camera-p/lpr-ip4.htm) (firmware 5.3.x): plate direction, confidence, plate list (`whiteList`, `blackList`, `temporaryList`), vehicle color, type, brand and model, and an `unparsed` event for posts it does not recognize.
+
 ## Installation
 
 ```bash
@@ -56,7 +58,7 @@ const { ViewtronEvent } = require('viewtron-sdk');
 const event = ViewtronEvent(xmlString);
 if (event) {
   console.log(event.category);       // 'lpr', 'face', 'intrusion', 'counting', 'metadata'
-  console.log(event.plateNumber);    // 'ABC1234'
+  console.log(event.plateNumber);    // 'IB36NL'
   console.log(event.plateGroup);     // 'whiteList', 'blackList', or ''
   console.log(event.configVersion);  // '2.1.0'
   console.log(event.format);         // 'v2'
@@ -64,6 +66,8 @@ if (event) {
 ```
 
 ## Camera Setup
+
+Viewtron cameras ship set to DHCP, so look up the camera's address first with our [IP camera finder tool](https://www.cctvcamerapros.com/IP-Camera-Network-Setup-s/1489.htm). Screenshots of every step are in [HTTP POST setup for Viewtron cameras and NVRs](https://videos.cctvcamerapros.com/developer/docs/getting-started/http-post-setup/) and the [IP camera API webhook setup](https://videos.cctvcamerapros.com/support/topic/ip-camera-api-webbooks) guide.
 
 1. Open camera web interface → **Setup → Network → HTTP Post**
 2. Set **Push Protocol Version** to **V1**
@@ -122,6 +126,8 @@ server.on('event', (event) => {
   console.log(event.plateNumber, event.vehicleColor, event.eventTime);
 });
 ```
+
+That filter is the core of a [license plate recognition gate opener](https://videos.cctvcamerapros.com/v/alpr-gate-access-control.html). The [LPR camera API reference](https://videos.cctvcamerapros.com/developer/docs/applications/license-plate-recognition-camera-api/) lists every field the camera sends.
 
 ### Face Fields
 
@@ -235,6 +241,10 @@ node examples/server.js 5050
 - [Python SDK](https://github.com/mikehaldas/viewtron-python-sdk)
 - [Node-RED Integration](https://github.com/mikehaldas/node-red-contrib-viewtron)
 - [Home Assistant Integration](https://github.com/mikehaldas/viewtron-home-assistant)
+- [Node.js SDK guide](https://videos.cctvcamerapros.com/developer/docs/getting-started/nodejs-sdk/)
+- [IP camera API XML examples](https://github.com/mikehaldas/IP-Camera-API/tree/main/examples)
+- [LPR camera systems](https://www.cctvcamerapros.com/License-Plate-Capture-Cameras-s/283.htm)
+- [Viewtron NVRs](https://www.cctvcamerapros.com/IP-Camera-NVRs-s/1472.htm)
 
 Maintainers: see [RELEASING.md](RELEASING.md).
 

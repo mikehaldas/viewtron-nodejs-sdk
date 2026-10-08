@@ -1,6 +1,14 @@
 # Changelog
 
-## 1.1.0
+## 1.1.1 — 2026-10-08
+
+Documentation only. No code changes.
+
+- Updated the README example plate to `IB36NL`.
+- Added product and documentation links to the README.
+- Dated the 1.1.0 notes and linked the tested camera and the Node.js SDK guide.
+
+## 1.1.0 — 2026-10-08
 
 Parser and server support for Viewtron API 2.x posts. No camera or plate client in this release.
 
@@ -20,3 +28,5 @@ Parser and server support for Viewtron API 2.x posts. No camera or plate client 
 - A direct camera plate post that uses the v1 layout (`smartType` `VEHICE`, no `messageType`, config version `1.7`) parses as an LPR event. Keepalives are ignored. Alarm-status posts emit `unparsed` with reason `alarmStatus`.
 
 Posts that already parse on API 1.x and 2.0 keep the same field values, with `configVersion` and `format` added. `raw`, `event`, and `connect` keep their previous behavior.
+
+Tested with the [Viewtron LPR-IP4 LPR camera](https://www.cctvcamerapros.com/LPR-Camera-p/lpr-ip4.htm) on firmware 5.3.x. Setup and field reference: [Node.js SDK guide](https://videos.cctvcamerapros.com/developer/docs/getting-started/nodejs-sdk/).
