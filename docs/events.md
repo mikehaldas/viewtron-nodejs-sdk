@@ -13,9 +13,14 @@ Handles both direct strings and objects with #text property.</p>
 </dd>
 <dt><a href="#parseEvent">parseEvent(postBody)</a> ⇒ <code>ViewtronEvent</code> | <code>null</code></dt>
 <dd><p>Parse an HTTP POST body from a Viewtron camera or NVR.</p>
-<p>Returns a ViewtronEvent object for recognized events, or null for
-keepalives, alarm status messages, and unrecognized payloads.</p>
-<p>Automatically detects IPC v1.x vs NVR v2.0 format.</p>
+<p>Returns a ViewtronEvent for recognized events, or null for keepalives,
+alarm status messages, and unrecognized payloads. Parsed events include
+<code>configVersion</code> (the config version attribute) and <code>format</code> (<code>v1</code> or <code>v2</code>).</p>
+<p>A config version of 2.x selects the v2 envelope. A 2.x post with no
+<code>messageType</code> and a v1 <code>smartType</code> is parsed with the v1 layout instead.
+Within each layout, <code>smartType</code> matching is case-insensitive.
+<code>eventTime</code> is the camera time. <code>currentTime</code> is read as seconds,
+milliseconds, or microseconds based on its magnitude.</p>
 </dd>
 </dl>
 
@@ -43,10 +48,15 @@ Extract base64 image data, filtering out placeholder values.
 ## parseEvent(postBody) ⇒ <code>ViewtronEvent</code> \| <code>null</code>
 Parse an HTTP POST body from a Viewtron camera or NVR.
 
-Returns a ViewtronEvent object for recognized events, or null for
-keepalives, alarm status messages, and unrecognized payloads.
+Returns a ViewtronEvent for recognized events, or null for keepalives,
+alarm status messages, and unrecognized payloads. Parsed events include
+`configVersion` (the config version attribute) and `format` (`v1` or `v2`).
 
-Automatically detects IPC v1.x vs NVR v2.0 format.
+A config version of 2.x selects the v2 envelope. A 2.x post with no
+`messageType` and a v1 `smartType` is parsed with the v1 layout instead.
+Within each layout, `smartType` matching is case-insensitive.
+`eventTime` is the camera time. `currentTime` is read as seconds,
+milliseconds, or microseconds based on its magnitude.
 
 **Kind**: global function  
 

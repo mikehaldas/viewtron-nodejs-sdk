@@ -12,11 +12,15 @@
 <li>Connected camera tracking</li>
 </ul>
 <p>Events:
-  &#39;event&#39;     (event, clientIP) — Parsed ViewtronEvent
-  &#39;connect&#39;   (clientIP)        — First message from a new camera IP
-  &#39;raw&#39;       (xml, clientIP)   — Raw XML before parsing (excludes traject)
-  &#39;listening&#39; ({ port, ip })    — Server started
-  &#39;error&#39;     (err)             — Server error</p>
+  &#39;event&#39;     (event, clientIP)              — Parsed ViewtronEvent
+  &#39;connect&#39;   (clientIP)                     — First message from a new camera IP
+  &#39;raw&#39;       (xml, clientIP)                — Raw XML before parsing (excludes traject)
+  &#39;unparsed&#39;  (xml, clientIp, reason)        — Post did not become an event
+  &#39;listening&#39; ({ port, ip })                 — Server started
+  &#39;error&#39;     (err)                          — Server error</p>
+<p><code>unparsed</code> reasons: <code>unknown-smartType</code>, <code>no-messageType</code>, <code>parse-error</code>,
+<code>alarmStatus</code>. Keepalives, traject, and non-XML bodies do not emit it.
+<code>raw</code> is unchanged: alarm status, traject, and keepalives still skip it.</p>
 </dd>
 </dl>
 
@@ -41,11 +45,16 @@ Handles all camera-specific requirements:
 - Connected camera tracking
 
 Events:
-  'event'     (event, clientIP) — Parsed ViewtronEvent
-  'connect'   (clientIP)        — First message from a new camera IP
-  'raw'       (xml, clientIP)   — Raw XML before parsing (excludes traject)
-  'listening' ({ port, ip })    — Server started
-  'error'     (err)             — Server error
+  'event'     (event, clientIP)              — Parsed ViewtronEvent
+  'connect'   (clientIP)                     — First message from a new camera IP
+  'raw'       (xml, clientIP)                — Raw XML before parsing (excludes traject)
+  'unparsed'  (xml, clientIp, reason)        — Post did not become an event
+  'listening' ({ port, ip })                 — Server started
+  'error'     (err)                          — Server error
+
+`unparsed` reasons: `unknown-smartType`, `no-messageType`, `parse-error`,
+`alarmStatus`. Keepalives, traject, and non-XML bodies do not emit it.
+`raw` is unchanged: alarm status, traject, and keepalives still skip it.
 
 **Kind**: global class  
 
@@ -66,6 +75,7 @@ Events:
 | [options.onEvent] | <code>function</code> |  | Shorthand for server.on('event', fn) |
 | [options.onConnect] | <code>function</code> |  | Shorthand for server.on('connect', fn) |
 | [options.onRaw] | <code>function</code> |  | Shorthand for server.on('raw', fn) |
+| [options.onUnparsed] | <code>function</code> |  | Shorthand for server.on('unparsed', fn) |
 
 **Example**  
 ```js

@@ -35,20 +35,32 @@ server.on('connect', (clientIP) => {
   console.log(`\n[+] Camera connected: ${clientIP}`);
 });
 
+server.on('unparsed', (xml, clientIp, reason) => {
+  const time = new Date().toLocaleTimeString();
+  console.log(`\n[${time}] Unparsed post from ${clientIp} (${reason})`);
+});
+
 server.on('event', (event, clientIP) => {
   const time = new Date().toLocaleTimeString();
   console.log(`\n[${time}] ${event.category.toUpperCase()} from ${clientIP}`);
   console.log(`  Source: ${event.source} | Type: ${event.eventDescription}`);
+  if (event.format || event.configVersion) {
+    console.log(`  Format: ${event.format} | Config: ${event.configVersion}`);
+  }
 
   switch (event.category) {
     case 'lpr':
       console.log(`  Plate: ${event.plateNumber}`);
-      console.log(`  Group: ${event.plateGroup || '(not in database)'}`);
+      if (event.plateList) console.log(`  List: ${event.plateList}`);
+      else console.log(`  Group: ${event.plateGroup || '(not in database)'}`);
+      if (event.direction) console.log(`  Direction: ${event.direction}`);
+      if (event.confidence != null) console.log(`  Confidence: ${event.confidence}`);
+      if (event.eventTime) console.log(`  Time: ${event.eventTime.toISOString()}`);
       if (event.plateColor) console.log(`  Plate Color: ${event.plateColor}`);
-      if (event.vehicle) {
-        const v = event.vehicle;
-        const parts = [v.color, v.brand, v.model, v.type].filter(Boolean);
-        console.log(`  Vehicle: ${parts.join(' ')}`);
+      {
+        const parts = [event.vehicleColor, event.vehicleBrand, event.vehicleModel, event.vehicleType]
+          .filter(Boolean);
+        if (parts.length) console.log(`  Vehicle: ${parts.join(' ')}`);
       }
       if (event.carOwner) console.log(`  Owner: ${event.carOwner}`);
       break;
