@@ -236,6 +236,8 @@ node examples/server.js 5050
 - [Node-RED Integration](https://github.com/mikehaldas/node-red-contrib-viewtron)
 - [Home Assistant Integration](https://github.com/mikehaldas/viewtron-home-assistant)
 
+Maintainers: see [RELEASING.md](RELEASING.md).
+
 ## License
 
 MIT
