@@ -789,44 +789,80 @@ describe('Direct camera plate posts', () => {
     }
   }
 
-  it('parses a plate post as an LPR event', async () => {
-    const xml = fixture('ipc-v2.1/lpr.xml');
-    const event = ViewtronEvent(xml);
+  const directPlates = [
+    {
+      file: 'lpr.xml',
+      plateNumber: 'IB36NL',
+      plateGroup: 'whiteList',
+      plateList: 'whiteList',
+      direction: 'approach',
+    },
+    {
+      file: 'lpr-blacklist-away.xml',
+      plateNumber: 'TEST456',
+      plateGroup: 'blackList',
+      plateList: 'blackList',
+      direction: 'away',
+    },
+    {
+      file: 'lpr-unlisted-approach.xml',
+      plateNumber: 'TEST123',
+      plateGroup: '',
+      plateList: null,
+      direction: 'approach',
+    },
+  ];
+
+  function assertDirectPlate(event, plate) {
     assert.ok(event);
     assert.strictEqual(event.source, 'IPC');
     assert.strictEqual(event.format, 'v1');
     assert.strictEqual(event.configVersion, '1.7');
     assert.strictEqual(event.category, 'lpr');
     assert.strictEqual(event.eventType, 'VEHICE');
-    assert.strictEqual(event.plateNumber, 'AIDRIVE');
-    assert.strictEqual(event.plateGroup, 'blackList');
-    assert.strictEqual(event.plateList, 'blackList');
-    assert.strictEqual(event.direction, 'away');
+    assert.strictEqual(event.plateNumber, plate.plateNumber);
+    assert.strictEqual(event.plateGroup, plate.plateGroup);
+    assert.strictEqual(event.plateList, plate.plateList);
+    assert.strictEqual(event.direction, plate.direction);
     assert.strictEqual(event.confidence, 99);
-    assert.strictEqual(event.vehicleColor, 'grey');
-    assert.strictEqual(event.vehicleBrand, 'Tesla');
+    assert.strictEqual(event.vehicleColor, 'white');
+    assert.strictEqual(event.vehicleBrand, 'TestBrand');
     assert.strictEqual(event.vehicleType, 'saloon car');
-    assert.strictEqual(event.vehicleModel, 'Tesla_ModelS');
+    assert.strictEqual(event.vehicleModel, 'TestModel');
     assert.deepStrictEqual(event.vehicle, {
       type: 'saloon car',
-      color: 'grey',
-      brand: 'Tesla',
-      model: 'Tesla_ModelS',
+      color: 'white',
+      brand: 'TestBrand',
+      model: 'TestModel',
     });
-    assert.strictEqual(event.cameraName, 'Viewtron IPC');
+    assert.strictEqual(event.cameraName, 'LPR-TEST');
     assert.strictEqual(event.cameraMac, '00:00:00:00:00:00');
     assert.strictEqual(event.channelId, '1');
-    assert.strictEqual(event.timestamp, '1791408287427999');
-    assert.strictEqual(event.eventTime.toISOString(), '2026-10-07T21:24:47.427Z');
-    assert.strictEqual(event.hasImages, false);
+    assert.strictEqual(event.timestamp, '1791471201542438');
+    assert.strictEqual(event.eventTime.toISOString(), '2026-10-08T14:53:21.542Z');
+    assert.strictEqual(event.hasImages, true);
+    assert.ok(event.sourceImage.startsWith('/9j/'));
+    assert.ok(event.targetImage.startsWith('/9j/'));
+  }
 
-    const { events, unparsed } = await post(xml);
-    assert.strictEqual(unparsed.length, 0);
-    assert.strictEqual(events.length, 1);
-    assert.strictEqual(events[0].category, 'lpr');
-    assert.strictEqual(events[0].plateNumber, 'AIDRIVE');
-    assert.strictEqual(events[0].plateList, 'blackList');
-  });
+  for (const plate of directPlates) {
+    it(`parses ${plate.file} as an LPR event`, async () => {
+      const xml = fixture(`ipc-v2.1/${plate.file}`);
+      if (plate.plateGroup === '') {
+        assert.strictEqual(xml.includes('<vehicleListType'), false);
+      }
+      assertDirectPlate(ViewtronEvent(xml), plate);
+
+      const { events, unparsed } = await post(xml);
+      assert.strictEqual(unparsed.length, 0);
+      assert.strictEqual(events.length, 1);
+      assert.strictEqual(events[0].category, 'lpr');
+      assert.strictEqual(events[0].plateNumber, plate.plateNumber);
+      assert.strictEqual(events[0].plateGroup, plate.plateGroup);
+      assert.strictEqual(events[0].plateList, plate.plateList);
+      assert.strictEqual(events[0].direction, plate.direction);
+    });
+  }
 
   it('ignores a keepalive', async () => {
     const xml = fixture('ipc-v2.1/keepalive.xml');
